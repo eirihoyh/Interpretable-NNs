@@ -39,27 +39,11 @@ class BayesianLinear(nn.Module):
 
         # 
         self.alpha_prior = (self.mu_prior + a_prior).to(DEVICE)
-        # initialize the bias parameter
 
-        self.bias_mu = nn.Parameter(torch.Tensor(out_features).uniform_(-0.2, 0.2))
-        self.bias_rho = nn.Parameter(-9 + 1 * torch.randn(out_features))
-        self.bias_sigma = torch.empty(self.bias_rho.shape)
-
-        # bias priors = N(0,1)
-        self.bias_mu_prior = torch.zeros(out_features, device=DEVICE)
-        self.bias_sigma_prior = (self.bias_mu_prior + 10.).to(DEVICE)
-
-        # # initialize the posterior inclusion probability for bias. Here we must have alpha in (0,1)
-        # self.bias_lambdal = nn.Parameter(torch.Tensor(out_features).uniform_(lower_init_lambda, upper_init_lambda))
-        # self.bias_alpha = torch.empty(size=self.bias_lambdal.shape)
-
-        # # Prior for bias alpha
-        # self.bias_alpha_prior = (self.bias_mu_prior + a_prior).to(DEVICE)
 
         # z variational parameters
         self.q0_mean = nn.Parameter(1 * torch.randn(in_features))
-        self.q0_log_var = nn.Parameter(-9 + 1 * torch.randn(in_features)) # TODO: Why is not this log(x+1)?????
-
+        self.q0_log_var = nn.Parameter(-9 + 1 * torch.randn(in_features)) 
         # c b1 and b2 variational parameters, same shape as z
         self.c1 = nn.Parameter(1 * torch.randn(in_features))
 
@@ -74,7 +58,7 @@ class BayesianLinear(nn.Module):
         self.z = 0
 
     def sample_z(self):
-        q0_std = self.q0_log_var.exp().sqrt() # TODO: Why is not this log(x+1)?????
+        q0_std = self.q0_log_var.exp().sqrt() 
         epsilon_z = torch.randn_like(q0_std)
         self.z = self.q0_mean + q0_std * epsilon_z  # reparametrization trick
         zs, log_det_q = self.z_flow(self.z)
@@ -100,15 +84,6 @@ class BayesianLinear(nn.Module):
                   - 0.5 * ((z_b[-1] - mean_r) ** 2 / (log_var_r.exp() + torch.tensor(1e-45)))).sum()
         log_r = log_det_r + log_rb
 
-        kl_bias = (torch.log((self.bias_sigma_prior / (self.bias_sigma+torch.tensor(1e-45)))+torch.tensor(1e-45)) 
-                   - 0.5 + (self.bias_sigma ** 2 + (self.bias_mu - self.bias_mu_prior) ** 2) 
-                   / (2 * self.bias_sigma_prior ** 2 + torch.tensor(1e-45))).sum()
-        
-        # kl_bias = (self.bias_alpha * (torch.log((self.bias_sigma_prior / (self.bias_sigma+torch.tensor(1e-45)))+ torch.tensor(1e-45)) 
-        #                - 0.5 + torch.log((self.bias_alpha / (self.bias_alpha_prior + torch.tensor(1e-45)))+torch.tensor(1e-45)) 
-        #                + (self.bias_sigma ** 2 + (self.bias_mu - self.bias_mu_prior) ** 2) / (2 * self.bias_sigma_prior ** 2+torch.tensor(1e-45)))
-        #                + (1-self.bias_alpha)*torch.log(((1-self.bias_alpha) / (1-self.bias_alpha_prior + torch.tensor(1e-45)))+torch.tensor(1e-45))).sum()
-
         kl_weight = (self.alpha * (torch.log((self.sigma_prior / (self.weight_sigma+torch.tensor(1e-45)))+torch.tensor(1e-45))
                                      - 0.5 + torch.log((self.alpha / (self.alpha_prior+torch.tensor(1e-45)))+torch.tensor(1e-45))
                                      + (self.weight_sigma ** 2 + (self.weight_mu * z2 - self.mu_prior) ** 2) / (
@@ -116,7 +91,7 @@ class BayesianLinear(nn.Module):
                     (1 - self.alpha) * torch.log(((1 - self.alpha) / (1 - self.alpha_prior + torch.tensor(1e-45)))+torch.tensor(1e-45))
                     ).sum()
         
-        return kl_bias + kl_weight + log_q - log_r
+        return kl_weight + log_q - log_r
 
     # forward path
     def forward(self, input, ensemble=False, post_train=False):
@@ -125,22 +100,20 @@ class BayesianLinear(nn.Module):
             self.alpha = (self.alpha.detach() > 0.5) * 1.
             self.alpha_prior[self.alpha.detach() < 0.5] = 0. # Only include priors that is inlcuded in the model
         self.weight_sigma = torch.log1p(torch.exp(self.weight_rho))
-        self.bias_sigma = torch.log1p(torch.exp(self.bias_rho))
         z_k, _ = self.sample_z()
         if self.training or ensemble:
             e_w = self.weight_mu * self.alpha * z_k
             var_w = self.alpha * (self.weight_sigma ** 2 + (1 - self.alpha) * self.weight_mu ** 2 * z_k ** 2)
-            e_b = torch.mm(input, e_w.T) + self.bias_mu
-            var_b = torch.mm(input ** 2, var_w.T) + self.bias_sigma ** 2
+            e_b = torch.mm(input, e_w.T)
+            var_b = torch.mm(input ** 2, var_w.T)
             eps = torch.randn(size=(var_b.size()), device=DEVICE)
             activations = e_b + torch.sqrt(var_b) * eps
 
         else:  # median prob model, model average over the weights where alpha > 0.5 (i.e. the sparse network)
 
             w = torch.normal(self.weight_mu * z_k, self.weight_sigma)
-            b = torch.normal(self.bias_mu, self.bias_sigma)
             g = (self.alpha.detach() > 0.5) * 1.
             weight = w * g
-            activations = torch.matmul(input, weight.T) + b
+            activations = torch.matmul(input, weight.T)
 
         return activations
