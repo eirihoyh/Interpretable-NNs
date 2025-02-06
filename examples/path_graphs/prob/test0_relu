@@ -1,0 +1,3 @@
+strict digraph "All paths!" {
+	"All paths" [shape=Msquare]
+}
