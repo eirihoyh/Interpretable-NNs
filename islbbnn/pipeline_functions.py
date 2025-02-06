@@ -18,15 +18,15 @@ from torchmetrics import R2Score, MeanSquaredError
 
 
 
-def create_data_unif(n,beta=[100,1,1,1,1], dep_level=0.5,classification=False, non_lin=False):
+def create_data_unif(n,beta=[10,1,1,1,1], dep_level=0.5,classification=False, non_lin=False):
     """
     Create simple dataset with four independent variables (drawn uniformly from -10 to 10). 
     Can make x3 dependent on x1 by using the following function
         x3 = dep*x1 + (1-dep)*x3
     where dep is between 0 and 1.
     Can choose between linear and non linear function:
-        linear: y = x1 + x2 + 100 + e
-        non-linear: y = x1 + x2 + x1*x2 + x1**2 + x2**2 + e
+        linear: y = x1 + x2 + 10 + e
+        non-linear: y = x1 + x2 + x1*x2 + x1**2 + x2**2 + 10 + e
     Can choose between classification problem and regression problem:
         classification: y = 0 if y < median(y), 1 else
         regression: y = y
@@ -34,6 +34,7 @@ def create_data_unif(n,beta=[100,1,1,1,1], dep_level=0.5,classification=False, n
     """
     # Create data
     # np.random.seed(42)
+    x0 = np.ones(n)
     x1 = np.random.uniform(-10,10,n)
     x2 = np.random.uniform(-10,10,n)
     x3 = np.random.uniform(-10,10,n)
@@ -55,7 +56,7 @@ def create_data_unif(n,beta=[100,1,1,1,1], dep_level=0.5,classification=False, n
         y = (y > np.median(y))*1
 
 
-    return y, np.concatenate((np.array([x1]).T, np.array([x2]).T, np.array([x3]).T, np.array([x4]).T), axis=1)
+    return y, np.concatenate((np.array([x0]).T, np.array([x1]).T, np.array([x2]).T, np.array([x3]).T, np.array([x4]).T), axis=1)
 
 def create_bsr_data(n, urange=[-3, 3], func=1):
     '''
@@ -132,7 +133,7 @@ def weight_matrices_numpy(net, flow=False):
     '''
     w = weight_matrices(net)
     for i in range(len(w)):
-        w[i] = w[i].detach().numpy()
+        w[i] = w[i].cpu().detach().numpy()
 
     if flow:
         z = z_matrices_numpy(net)
@@ -187,38 +188,6 @@ def weight_matrices_std_numpy(net):
     Transform all tensor standard deviation matrices to numpy arrays
     '''
     w = weight_matrices_std(net)
-    for i in range(len(w)):
-        w[i] = w[i].detach().numpy()
-
-    return w
-
-def mu_matrices_bias(net):
-    weight_matrices_bias = []
-    n_hidden_layers = nr_hidden_layers(net)
-    for name, param in net.named_parameters():
-        for i in range(n_hidden_layers+1):
-            if f'linears.{i}.bias_mu' in name:
-                weight_matrices_bias.append(copy.deepcopy(param.data))
-    return weight_matrices_bias
-
-def mu_matrices_bias_numpy(net):
-    w = mu_matrices_bias(net)
-    for i in range(len(w)):
-        w[i] = w[i].detach().numpy()
-
-    return w
-
-def std_matrices_bias(net):
-    weight_matrices_bias = []
-    n_hidden_layers = nr_hidden_layers(net)
-    for name, param in net.named_parameters():
-        for i in range(n_hidden_layers+1):
-            if f'linears.{i}.bias_rho' in name:
-                weight_matrices_bias.append(copy.deepcopy(torch.log1p(torch.exp(param)).cpu().data))
-    return weight_matrices_bias
-
-def std_matrices_bias_numpy(net):
-    w = std_matrices_bias(net)
     for i in range(len(w)):
         w[i] = w[i].detach().numpy()
 
@@ -453,62 +422,6 @@ def include_input_from_layer(clean_alpha_list):
 
     return include_list
 
-# TODO: Figure out if these two functions can be included, and if it is 
-# possible to fix the such that they work properly. As of now they 
-# account for the same weights multiple times, which is not ideal... 
-# def expected_depth(net, p, n_hidden=n_hidden_layers):
-#     '''
-#     TODO: Find a more appropriate way of calculating the expected depth.
-#           Now we can have an expected depth deeper than "the deepest" we 
-#           go (e.g. if we have a max depth of 3, it could sometimes report
-#           an expected depth of 5). This should not be possible...
-#           However, we should note that it should be possible to have an
-#           expected depth of 0 as could have a constant function. 
-#     '''
-#     probs = pip_func.input_inclusion_prob(net)
-
-#     probs_values = list(probs.values())
-#     exp_depth = {}
-#     for i in range(p):
-#         exp_depth[i] = np.sum(probs_values[i::p]*np.arange(1,n_hidden+2,1)[::-1])/np.sum(probs_values[i::p])
-
-#     exp_depth_net = np.sum(np.sum([probs_values[i::p] for i in range(p)],0)*np.arange(1,n_hidden+2,1)[::-1])/np.sum(probs_values)
-#     return exp_depth, exp_depth_net
-
-# def expected_depth_median(net, threshold=0.5):
-#     '''
-#     Finds the expected depth of a median model (or just set the 
-#     threshold to to whatever number you feel like)
-
-#     TODO: A bit unsure if this really is the "correct" way to measure
-#     expected depth in a median network. Would at least get 
-#     expected starting point for each node, but not sure if we can 
-#     count this as expected depth as we do not take into considuration
-#     the number of splittet paths. NEED to look at this later....
-#     '''
-#     alpha_list = pip_func.clean_alpha(net, threshold)  # Will be matrices consisting of zeros and ones.
-#     p = alpha_list[0].shape[1]
-#     print(p)
-#     max_depth = len(alpha_list)
-#     print(max_depth)
-#     exp_depth = {}
-#     for i in range(p):
-#         exp_depth[i] = 0
-#         c = 0
-#         for j, a in enumerate(alpha_list):
-#             c += 1
-#             counter = np.sum(a[:,-(p-i)].detach().numpy())
-#             print(counter)
-#             exp_depth[i] += counter*(max_depth-j)
-        
-#         if c == 0:
-#             exp_depth[i] = 0
-#         else:
-#             exp_depth[i] /= c
-        
-#     return exp_depth
-
-
 
 def average_path_length(clean_alpha_list):
     """
@@ -554,129 +467,26 @@ def prob_width(net, p):
     # exp_depth_net = np.sum(np.sum([probs_values[i::p] for i in range(p)],0)*np.arange(1,n_hidden+2,1)[::-1])/np.sum(probs_values)
     return pr_w
 
-def second_derivative_output(net, p, rand_numbs):
-    '''
-    Will be used to calcualte our complexity measure.
-    The seocnd derivative for each input will give us an idea of how much 
-    the "curve" (with respect to an input) changes in our function. We will,
-    however, use a Monte Carlo variation in the complexity measure function, so
-    we will only calcualte second derivatives to random inputs. 
-    '''
-    first = {}
-    second = {}
-    for i in range(p):
-        first[i] = []
-        second[i] = []
-
-    for rand in rand_numbs:
-        net.eval()
-        _x = rand.clone().detach().requires_grad_(True)
-        out = net.forward_preact(_x, calculate_log_probs=True)
-        first_der = torch.autograd.grad(out, _x, create_graph=True, retain_graph=True)[0]
-        for i in range(p):
-            first[i].append(first_der[i].cpu().detach().numpy())
-            second[i].append(torch.autograd.grad(first_der[i], _x, retain_graph=True)[0][i].cpu().detach().numpy())
-
-    return first, second
-
-def complexity_measure(net, p, rand_numbs):
-    '''
-    Computes complexity of output based on squared second derivatives.
-    This measure is inspired by smoothing splines, where they "penalize" models for being 
-    "too complex" (which is measures through the sum of second derivatives).
-
-    We also include the first derivatives. Reason for this is that we need to know 
-    wether variable is contributing to the output at all. If both first and second 
-    derivative "measures" are equal to zero, then we know that the input in question 
-    does not contribute to the output (as it is either a constant or zero)
-
-    Other than this, we know at least the following:
-        - complexity for an input equal to zero --> linear contribution to prediction
-        - complexity for an input greater than zero --> non-linear realationship
-        - combined complexity equal to zero --> linear contribution from inputs (at least some of the inputs)
-        - combined complexity greater than zero --> non-linear function
-    
-    It should also be noted that this complexity measure is a way of determining which
-    models that are equivalent, and which models that are "more complex" than others. 
-    Sometimes it is very easy to determine wether a trained model is "more complex" than 
-    another. However, in some situations, it is not that obvious, meaning a measure like this
-    would be really helpful. This metric could also "help" when considering multiple models
-    with similar accuacy and similar density. Also, it could help us get a better understanding 
-    of the "underlying" function of the model. That is, we could understand the "complexity" of 
-    the underlying function, and which inputs that has the most "complex" measures.
-    '''
-    first, second = second_derivative_output(net, p, rand_numbs)
-    mc_int_first = {}  # First derivative 
-    mc_int_second = {}  # Second derviative "complexity"
-    for i in range(p):
-        mc_int_first[i] = np.mean(np.array(first[i])**2)  # Also sqaure first derivative to avoide "canceling" out pos and neg values
-        mc_int_second[i] = np.mean(np.array(second[i])**2)  # This is the complexity for each input
-
-    combined_complexity = np.sum([k for k in mc_int_second.values()])  # The "cumulative" complexity
-
-    return mc_int_first, mc_int_second, combined_complexity
-
-def second_derivative_output_multiclass(net,p,rand_numbs,classes):
-    second_der = {}
-    for c in range(classes):
-        second_der[c] = {}
-        for i in range(p):
-            second_der[c][i] = []
-    for c in range(classes):
-        for j in range(len(rand_numbs)):
-            _x = rand_numbs[j].view(-1,p).clone().detach().requires_grad_(True)
-            net.eval()
-            out = net.forward_preact(_x)[:,c]
-            first_der = torch.autograd.grad(out, _x,  create_graph=True, retain_graph=True)[0][0]
-            for i in range(p):
-                s_der = torch.autograd.grad(first_der[i], _x, retain_graph=True)[0].cpu().detach().numpy()
-                second_der[c][i].append(s_der[0][i])
-
-    return second_der
-
-def complexity_measure_multiclass(net,p,rand_numbs,classes):
-    second = second_derivative_output_multiclass(net, p, rand_numbs,classes)
-    mc_int_second = {}  # Second derviative "complexity"
-    combined_complexity_class = {}
-    for c in range(classes):
-        mc_int_second[c] = {}
-        for i in range(p):
-            mc_int_second[c][i] = np.mean(np.array(second[c][i])**2)  # This is the complexity for each input
-
-    for c in range(classes):
-        combined_complexity_class[c] = np.sum([k for k in mc_int_second[c].values()])
-    
-    combined_complexity = np.sum([k for k in combined_complexity_class.values()])  # The "cumulative" complexity
-
-    return mc_int_second, combined_complexity_class, combined_complexity, second
-
 
 def get_weight_and_bias_std(net, alphas_numpy, threshold=0.5):
     '''
     Have that std represents the weights and biases 
     '''
     std_weigth = weight_matrices_std_numpy(net)
-    bias_weights_std = std_matrices_bias_numpy(net)
     for i in range(len(std_weigth)):
         std_weigth[i] *= (alphas_numpy[i] > threshold)*1.
 
-    return std_weigth, bias_weights_std
+    return std_weigth
 
 
 def get_weight_and_bias(net, alphas_numpy, median=True, sample=False, threshold=0.5):
     weights = weight_matrices_numpy(net)
     std_weigth = weight_matrices_std_numpy(net)
 
-    bias_weights = mu_matrices_bias_numpy(net)
-    bias_weights_std = std_matrices_bias_numpy(net)
-
     if sample:
         for i in range(len(weights)):
             std = std_weigth[i]
             weights[i] += np.random.normal(0,std)
-
-            std_bias = bias_weights_std[i]
-            bias_weights[i] += np.random.normal(0,std_bias)
 
     if median:
         for i in range(len(weights)):
@@ -687,37 +497,37 @@ def get_weight_and_bias(net, alphas_numpy, median=True, sample=False, threshold=
             weights[i] *= include
             alphas_numpy[i] = copy.deepcopy(include)
 
-    return weights, bias_weights, alphas_numpy
+    return weights, alphas_numpy
 
-def relu_activation(input_data,weights, bias_weights):
+def relu_activation(input_data,weights):
     output_list = []
     out = np.array([[]])
     for i, w in enumerate(weights[:-1]):
         out = np.concatenate((out, input_data.detach().numpy()),1)
-        out = out@w.T + bias_weights[i]
+        out = out@w.T
         out = out*(out>0) # ReLU activation
         # print(out)
         output_list.append(out)
     
     # No activation in last layer (prediction/output layer)
     out = np.concatenate((out, input_data.detach().numpy()),1)
-    out = out@weights[-1].T + bias_weights[-1]
+    out = out@weights[-1].T
     # print(out)
     output_list.append(out)
 
     return out, output_list
 
-def no_activation(input_data,weights, bias_weights):
+def no_activation(input_data,weights):
     output_list = []
     out = np.array([[]])
     for i, w in enumerate(weights[:-1]):
         out = np.concatenate((out, input_data.detach().numpy()),1)
-        out = out@w.T + bias_weights[i]
+        out = out@w.T
         output_list.append(out)
     
     # No activation in last layer (prediction/output layer)
     out = np.concatenate((out, input_data.detach().numpy()),1)
-    out = out@weights[-1].T + bias_weights[-1]
+    out = out@weights[-1].T
     output_list.append(out)
 
     return out, output_list
@@ -774,14 +584,14 @@ def local_explain_relu(net, input_data, threshold=0.5, median=True, sample=False
         alphas_numpy = get_alphas_numpy(net)
         nr_classes = alphas_numpy[-1].shape[0]
         
-        weights, bias_weights, alphas_numpy = get_weight_and_bias(net, alphas_numpy, median, sample, threshold) 
+        weights, alphas_numpy = get_weight_and_bias(net, alphas_numpy, median, sample, threshold) 
 
         # Get alpha matrices to torch to work for "clean_alpha_class" func
         alphas = copy.deepcopy(alphas_numpy)
         for i in range(len(alphas)):
             alphas[i] = torch.tensor(alphas[i])
 
-        out, output_list = relu_activation(input_data, weights, bias_weights)
+        out, output_list = relu_activation(input_data, weights)
         if verbose: print(out) # "Predicted" values after sending data through network
         preds.append(out)
         contribution_classes = {}
@@ -810,7 +620,6 @@ def local_explain_relu(net, input_data, threshold=0.5, median=True, sample=False
 
                 pred_impact[pi] = x[0,0]
         
-            pred_impact["bias"] = out[0,c] - sum(pred_impact.values()) # Bias will be what the inputs can't explain
             contribution_classes[c] = pred_impact
         contributions[n] = contribution_classes
 
@@ -824,10 +633,8 @@ def local_explain_relu(net, input_data, threshold=0.5, median=True, sample=False
             for s in range(n_samples):
                 values[s] = contributions[s][c][pi]
             mean_contribution[c][pi] = np.mean(values)
+            # TODO: In cases with a lot of zeros, and a few digits, one could get [0,0]. This would harm the current plotting function.
             cred_contribution[c][pi] = np.quantile(values, quantiles) # diff CI, uses 95\% as standard
-        bias_contr = np.array([contributions[s][c]["bias"] for s in range(n_samples)])
-        mean_contribution[c]["bias"] = np.mean(bias_contr)
-        cred_contribution[c]["bias"] = np.quantile(bias_contr, quantiles)  # TODO: In cases with a lot of zeros, and a few digits, one could get [0,0]. This would harm the current plotting function.
 
     return mean_contribution, cred_contribution, np.array(preds)
 
@@ -840,14 +647,14 @@ def local_explain_relu_magnitude(net, input_data, threshold=0.5, median=True, sa
         alphas_numpy = get_alphas_numpy(net)
         nr_classes = alphas_numpy[-1].shape[0]
         
-        weights, bias_weights, alphas_numpy = get_weight_and_bias(net, alphas_numpy, median, sample, threshold) 
+        weights, alphas_numpy = get_weight_and_bias(net, alphas_numpy, median, sample, threshold) 
 
         # Get alpha matrices to torch to work for "clean_alpha_class" func
         alphas = copy.deepcopy(alphas_numpy)
         for i in range(len(alphas)):
             alphas[i] = torch.tensor(alphas[i])
 
-        out, output_list = relu_activation(input_data, weights, bias_weights)
+        out, output_list = relu_activation(input_data, weights)
         if verbose: print(out) # "Predicted" values after sending data through network
         preds.append(out)
         contribution_classes = {}
@@ -880,8 +687,6 @@ def local_explain_relu_magnitude(net, input_data, threshold=0.5, median=True, sa
                 else:
                     pred_impact[pi] = 0 if input_data.detach().numpy()[0,pi] == 0 else x[0,0]
 
-
-            pred_impact["bias"] = out[0,c] - sum(input_data.detach().numpy()[0]*list(pred_impact.values())) # Bias will be what the inputs can't explain
             contribution_classes[c] = pred_impact
         contributions[n] = contribution_classes
 
@@ -896,108 +701,19 @@ def local_explain_relu_magnitude(net, input_data, threshold=0.5, median=True, sa
                 values[s] = contributions[s][c][pi]
             mean_contribution[c][pi] = np.mean(values)
             cred_contribution[c][pi] = np.quantile(values, quantiles) # diff CI, uses 95\% as standard
-        bias_contr = np.array([contributions[s][c]["bias"] for s in range(n_samples)])
-        mean_contribution[c]["bias"] = np.mean(bias_contr)
-        cred_contribution[c]["bias"] = np.quantile(bias_contr, quantiles)  # TODO: In cases with a lot of zeros, and a few digits, one could get [0,0]. This would harm the current plotting function.
 
     return mean_contribution, cred_contribution, np.array(preds)
 
 
-def local_explain_relu_normal_dist(net, input_data, threshold=0.5, verbose=False, quantiles=[0.025,0.975]):
-    '''
-    Gives local explainability in terms as a probability distribution
-    for a given input when using a network initiated using ReLU 
-    activation.
-    
-    Returns a dictionary of dictionary, indicating the class we
-    want to see contribution from, and mean and variance for the 
-    Gaussian distribution that indicates how much the variable 
-    contributes with for the given class.
 
-    TODO: Make it possible to consider the bias aswell, now we only
-    consider the covariates. 
-    NOTE: A potential weakness with this approach is that when drawing 
-    different weights, we might get different distributions, wich is not 
-    too ideal in my opition. However, this might give an indication of 
-    which parameters that are important for this specific prediction,
-    and also how much each one contributes with. 
-    '''
-    alphas_numpy = get_alphas_numpy(net)
-    nr_classes = alphas_numpy[-1].shape[0]
-    
-    weights, bias_weights, alphas_numpy = get_weight_and_bias(net, alphas_numpy, median=True, sample=False, threshold=threshold) # mu
-    std_weights, std_bias_weights = get_weight_and_bias_std(net, alphas_numpy, threshold=threshold) # std
-
-    # Get alpha matrices to torch to work for "clean_alpha_class" func
-    alphas = copy.deepcopy(alphas_numpy)
-    for i in range(len(alphas)):
-        alphas[i] = torch.tensor(alphas[i])
-
-    out, output_list = relu_activation(input_data, weights, bias_weights)
-    
-    # Get std such that we can compute prediction certainty
-    clean_alpha_mat = clean_alpha(net, threshold=threshold)
-    dim, p = clean_alpha_mat[0].shape
-    active_nodes_list = get_active_nodes(clean_alpha_mat, output_list)
-    std_weights = find_active_weights(std_weights, active_nodes_list, clean_alpha_mat, dim)
-    var_weights = [std**2 for std in std_weights]
-    var_bais_weights = [std**2 for std in std_bias_weights]
-    out_var, _ = no_activation(input_data**2, var_weights, var_bais_weights)
-    out_std = np.sqrt(out_var)
-    
-    
-    if verbose: print(out) # "Predicted" values after sending data through network
-
-    # net.eval()
-    # out, output_list = net.forward_preact(input_data, sample=False, ensemble=False)
-    contribution_classes = {}
-    for c in range(nr_classes):
-        weights_class = copy.deepcopy(weights)
-        weights_class[-1] = weights_class[-1][c:c+1,:]  # Only include weights going into the class of interest
-        clean_alpha_list = clean_alpha_class(net, threshold=0.5, class_in_focus=c, alpha_list=copy.deepcopy(alphas))
-        clean_alpha_list[-1] = clean_alpha_list[-1][c:c+1,:]
-        dim, p = clean_alpha_list[0].shape
-        output_list_c = copy.deepcopy(output_list)
-        # output_list_c[-1] = output_list_c[-1][:,c:c+1] # focus on one class at-a-time
-        
-        active_nodes_list = get_active_nodes(clean_alpha_list, output_list_c)
-        # print(active_nodes_list)
-        # active_weights = find_active_weights(weights_class, active_nodes_list, clean_alpha_list, dim)
-
-        weights_mu = weight_matrices_numpy(net)
-        weights_mu[-1] = weights_mu[-1][c:c+1,:]
-        active_mu = find_active_weights(weights_mu, active_nodes_list, clean_alpha_list, dim)
-        weights_std = weight_matrices_std_numpy(net)
-        weights_std[-1] = weights_std[-1][c:c+1,:]
-        active_var = find_active_weights(weights_std, active_nodes_list, clean_alpha_list, dim)
-        for j in range(len(active_var)):
-            active_var[j] = active_var[j]**2
-        
-        pred_impact = {}
-        for pi in range(p):
-            explain_this_numpy = copy.deepcopy(input_data.detach().numpy())
-            remove_list = [True]*p
-            remove_list[pi] = False # focus on one input at-a-time
-            explain_this_numpy[0,remove_list] = 0
-            x_mu = np.array([[]])
-            x_var = np.array([[]])
-            for amu, avar in zip(active_mu, active_var):
-                x_mu = np.concatenate((x_mu, explain_this_numpy), 1)
-                x_mu = x_mu@amu.T
-                
-                x_var = np.concatenate((x_var, explain_this_numpy**2), 1)  # TODO: Check if I should rather have "explain_this_numpy**2"
-                x_var = x_var@avar.T
-            x_std = np.sqrt(x_var[0,0])
-            ci = stats.norm.ppf(quantiles, x_mu[0,0], x_std)
-            pred_impact[pi] = [x_mu[0,0], ci]  # mean and std for Gaussian dist 
-    
-        contribution_classes[c] = pred_impact
-
-    return contribution_classes, out[0], out_std[0]
-
-def train(net,train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weights, multiclass=False, verbose=True, post_train=False):
+def train(net, train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weights, multiclass=False, verbose=True, post_train=False):
     net.train()
+
+    inds = np.arange(0,len(train_data),1)
+    shuffle_data = np.random.choice(inds, size=len(train_data), replace=False)
+    train_data = train_data[shuffle_data]
     old_batch = 0
+    
     for batch in range(int(np.ceil(train_data.shape[0] / batch_size))):
         batch = (batch + 1)
         _x = train_data[old_batch: batch_size * batch,0:p]
@@ -1013,11 +729,14 @@ def train(net,train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weig
                 
         net.zero_grad()
         outputs = net(data, sample=True, post_train=post_train)
-        negative_log_likelihood = net.loss(outputs, target)
+        negative_log_likelihood = net.loss(outputs, target) 
         loss = negative_log_likelihood + net.kl() / num_batches
         loss.backward()
         optimizer.step()
-    
+
+        del _x
+        del _y
+
     if verbose:
         print('loss', loss.item())
         print('nll', negative_log_likelihood.item())
@@ -1027,11 +746,7 @@ def train(net,train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weig
 
 def val(net, val_data, DEVICE, multiclass=False, reg=False, verbose=True, post_train=False):
     '''
-    NOTE: Will only validate using median model as this is 
-            what we mainly care about. Reason for this is 
-            that the full model could give missleading results
-            as there are too many redundant weights that are 
-            included
+    NOTE: Will only validate using median model. 
     '''
     net.eval()
     with torch.no_grad():
@@ -1049,7 +764,7 @@ def val(net, val_data, DEVICE, multiclass=False, reg=False, verbose=True, post_t
 
         if reg:
             metric = R2Score()
-            a = metric(outputs.T[0], target.T[0]).detach().numpy()
+            a = metric(outputs.T[0], target.T[0]).cpu().detach().numpy()
         else:
             if multiclass:
                 output1 = outputs#.T.mean(0)
@@ -1057,7 +772,7 @@ def val(net, val_data, DEVICE, multiclass=False, reg=False, verbose=True, post_t
                 a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
             else:
                 class_pred = outputs.round().squeeze()
-                a = np.mean((class_pred.detach().numpy() == target.detach().numpy().T[0]) * 1)
+                a = np.mean((class_pred.cpu().detach().numpy() == target.cpu().detach().numpy().T[0]) * 1)
     
     alpha_clean = clean_alpha(net, threshold=0.5)
     density_median, used_weigths_median, _ = network_density_reduction(alpha_clean)
@@ -1066,7 +781,7 @@ def val(net, val_data, DEVICE, multiclass=False, reg=False, verbose=True, post_t
 
     return negative_log_likelihood.item(), loss.item(), a
 
-def test_ensemble(net, test_data, DEVICE, SAMPLES, reg=True, verbose=True, post_train=False, multiclass=False):
+def test_ensemble(net, test_data, DEVICE, SAMPLES, CLASSES=1, reg=True, verbose=True, post_train=False, multiclass=False):
     net.eval()
     metr = []
     metr_median = []
@@ -1082,60 +797,55 @@ def test_ensemble(net, test_data, DEVICE, SAMPLES, reg=True, verbose=True, post_
         _y = test_data[:, -1]
         data = _x.to(DEVICE)
         target = _y.to(DEVICE)
-        #outputs = torch.zeros(TEST_SAMPLES, TEST_BATCH_SIZE, 1).to(DEVICE)
-        for _ in range(SAMPLES):
-            outputs = net.forward(data, sample=True, ensemble=True, calculate_log_probs=True, post_train=post_train)
-            outputs_median = net.forward(data, sample=True, ensemble=False, calculate_log_probs=True, post_train=post_train)
+        outputs = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
+        outputs_median = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
+        for i in range(SAMPLES):
+            outputs[i] = net.forward(data, sample=True, ensemble=True, calculate_log_probs=True, post_train=post_train)
+            outputs_median[i] = net.forward(data, sample=True, ensemble=False, calculate_log_probs=True, post_train=post_train)
 
+        # Take the mean of the predictions 
+        outputs_mean = outputs.mean(0)  
+        outputs_median_mean = outputs_median.mean(0)
+        # Get current density (median prob model) 
+        alpha_clean = clean_alpha(net, threshold=0.5)
+        density_median, used_weigths_median, _ = network_density_reduction(alpha_clean)
+        density.append(density_median)
+        used_weights.append(used_weigths_median)
 
-            alpha_clean = clean_alpha(net, threshold=0.5)
-            density_median, used_weigths_median, _ = network_density_reduction(alpha_clean)
-            density.append(density_median)
-            used_weights.append(used_weigths_median)
+        if reg:
+            metric = R2Score()
+            mse = MeanSquaredError().to(DEVICE)
+            a_r2 = metric(outputs_mean.T[0], target).cpu().detach().numpy()
+            a_median_r2 = metric(outputs_median_mean.T[0], target).cpu().detach().numpy()
 
-            if reg:
-                metric = R2Score()
-                mse = MeanSquaredError()
-                a_r2 = metric(outputs.T[0], target).detach().numpy()
-                a_median_r2 = metric(outputs_median.T[0], target).detach().numpy()
+            a_rmse = np.sqrt(mse(outputs_mean.T[0], target).cpu().detach().numpy())
+            a_median_rmse = np.sqrt(mse(outputs_median_mean.T[0], target).cpu().detach().numpy())
+        else:
+            if multiclass:
+                output1 = outputs_mean#.T.mean(0)
+                class_pred = output1.max(1, keepdim=True)[1]
+                a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
 
-                a_rmse = np.sqrt(mse(outputs.T[0], target).detach().numpy())
-                a_median_rmse = np.sqrt(mse(outputs_median.T[0], target).detach().numpy())
+                output1_median = outputs_median_mean#.T.mean(0)
+                class_pred_median = output1_median.max(1, keepdim=True)[1]
+                a_median = class_pred_median.eq(target.view_as(class_pred_median)).sum().item() / len(target)
             else:
-                if multiclass:
-                    output1 = outputs#.T.mean(0)
-                    class_pred = output1.max(1, keepdim=True)[1]
-                    a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
+                output1 = outputs_mean.T.mean(0)
+                class_pred = output1.round().squeeze()
+                a = np.mean((class_pred.cpu().detach().numpy() == target.cpu().detach().numpy()) * 1)
 
-                    output1_median = outputs_median#.T.mean(0)
-                    class_pred_median = output1_median.max(1, keepdim=True)[1]
-                    a_median = class_pred_median.eq(target.view_as(class_pred_median)).sum().item() / len(target)
-                else:
-                    output1 = outputs.T.mean(0)
-                    class_pred = output1.round().squeeze()
-                    a = np.mean((class_pred.detach().numpy() == target.detach().numpy()) * 1)
-
-                    output1_median = outputs_median.T.mean(0)
-                    class_pred_median = output1_median.round().squeeze()
-                    a_median = np.mean((class_pred_median.detach().numpy() == target.detach().numpy()) * 1)
+                output1_median = outputs_median_mean.T.mean(0)
+                class_pred_median = output1_median.round().squeeze()
+                a_median = np.mean((class_pred_median.cpu().detach().numpy() == target.cpu().detach().numpy()) * 1)
                 
-                # output1 = outputs
-                # class_pred = output1.max(1, keepdim=True)[1]
-                # a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
-                # a = a.detach().numpy()
-
-                # output1_median = outputs_median
-                # class_pred_median = output1_median.max(1, keepdim=True)[1]
-                # a_median = class_pred_median.eq(target.view_as(class_pred_median)).sum().item() / len(target)
-            if reg:
-                ensemble.append(a_rmse)
-                ensemble_median.append(a_median_rmse)
-                ensemble_r2.append(a_r2)
-                ensemble_r2_median.append(a_median_r2)
-            else:
-                ensemble.append(a)
-                ensemble_median.append(a_median)
-            # get_metrics(net, threshold=0.5)
+        if reg:
+            ensemble.append(a_rmse)
+            ensemble_median.append(a_median_rmse)
+            ensemble_r2.append(a_r2)
+            ensemble_r2_median.append(a_median_r2)
+        else:
+            ensemble.append(a)
+            ensemble_median.append(a_median)
 
         metr.append(np.mean(ensemble))
         metr.append(np.mean(density))

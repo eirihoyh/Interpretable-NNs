@@ -9,7 +9,7 @@ from graphviz import Digraph
 import pipeline_functions as pip_func
 
 
-def plot_whole_path_graph(alpha_list, all_connections, save_path, show=True):
+def plot_whole_path_graph(alpha_list, all_connections, save_path, show=False):
     dot = Digraph(f"All paths!")
     n_layers = len(alpha_list) + 1
     dim = alpha_list[0].shape[0]

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class BayesianLinear(nn.Module):
-    def __init__(self, in_features, out_features, lower_init_lambda=5, upper_init_lambda=15, a_prior=0.1):
+    def __init__(self, in_features, out_features, lower_init_lambda=-10, upper_init_lambda=-8, a_prior=0.1, std_prior=2.5, p=5):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -16,11 +16,13 @@ class BayesianLinear(nn.Module):
         self.weight_sigma = torch.empty(size=self.weight_rho.shape)
 
         # weight priors = N(0,1)
-        self.mu_prior = torch.zeros(out_features, in_features, device=DEVICE) 
-        self.sigma_prior = (self.mu_prior+30).to(DEVICE)
+        self.mu_prior = torch.zeros(out_features, in_features, device=DEVICE)
+        self.sigma_prior = (self.mu_prior+std_prior).to(DEVICE)
         
         # model variational parameters
-        self.lambdal = nn.Parameter(torch.Tensor(out_features, in_features).uniform_(lower_init_lambda, upper_init_lambda))
+        init_lambda = torch.Tensor(out_features, in_features).uniform_(lower_init_lambda, upper_init_lambda)
+        init_lambda[:,-p:] = 5
+        self.lambdal = nn.Parameter(init_lambda)
         self.alpha = torch.empty(size=self.lambdal.shape)
 
         # model priors = Bernoulli(0.10)
@@ -39,7 +41,6 @@ class BayesianLinear(nn.Module):
             self.alpha = (self.alpha.detach() > 0.5) * 1.
             self.alpha_prior[self.alpha.detach() < 0.5] = 0. # Only include priors that is inlcuded in the model
         self.weight_sigma = torch.log1p(torch.exp(self.weight_rho))
-        self.bias_sigma = torch.log1p(torch.exp(self.bias_rho))
         if ensemble or self.training:
             e_w = self.weight_mu * self.alpha
             var_w = self.alpha * (self.weight_sigma ** 2 + (1 - self.alpha) * self.weight_mu ** 2)
