@@ -158,50 +158,6 @@ def plot_local_contribution_empirical(net, data, sample=True, median=True, n_sam
 
         plt.show()
 
-
-def plot_local_contribution_dist(net, data, save_path=None, class_names=None, variable_names=None, quantiles=[0.025,0.975], include_zero_means=True):
-    cont_class, out, out_std = pip_func.local_explain_relu_normal_dist(net, data, quantiles=quantiles)
-    n_classes = len(cont_class.keys())
-    if class_names == None:
-        class_names = np.arange(n_classes)
-    if variable_names == None:
-        variable_names = np.arange(data.shape[-1])
-        variable_names = list(variable_names.astype(str))
-    variable_names = np.array(variable_names)
-    for c in cont_class.keys():
-        variable_names_class = copy.deepcopy(variable_names)
-        # labels = np.array([str(k) for k in cont_class[c].keys()])
-        means = np.array([val[0] for val in cont_class[c].values()])
-        errors = np.array([val[1] for val in cont_class[c].values()])
-
-        if not include_zero_means:
-            not_include = means != 0
-            variable_names_class = variable_names_class[not_include]
-            means = means[not_include]
-            errors = errors[not_include]
-
-        quantiles_pred = stats.norm.ppf(quantiles, out[c], out_std[c])
-        means = np.append(means,out[c])
-        errors = np.vstack([errors, quantiles_pred])
-        top = errors[:,1]-means
-        bottom = means-errors[:,0]
-
-        variable_names_class = np.append(variable_names_class, "Prediction")
-
-        fig, ax = plt.subplots()
-        
-        ax.bar(variable_names_class, means, yerr=(bottom, top), align='center', alpha=0.5, ecolor='black', capsize=10)
-        ax.set_ylabel('Contribution')
-        ax.set_xticks(variable_names_class)
-        ax.tick_params(axis='x', rotation=90)
-        ax.set_title(f'Distribution explaination of {class_names[c]}')
-        ax.grid()
-
-        if save_path != None:
-            plt.savefig(save_path+f"_class_{c}")
-
-        plt.show()
-
 def plot_path_individual_classes(net, CLASSES, path="individual_classes"):
     for c in range(CLASSES):
         include_list = [True]*CLASSES
@@ -410,56 +366,6 @@ def plot_local_contribution_images_contribution_empirical_magnitude(net, explain
         plt.show()
 
 
-def plot_local_contribution_images_contribution_dist(net, explain_this, n_classes=1, class_names=None):
-    cont_class, _, _ = pip_func.local_explain_relu_normal_dist(net, explain_this)
-    
-    if class_names == None:
-        class_names = np.arange(n_classes)
-
-    colors_mean = ["blue", "white", "red"]
-    colors_std = ["blue", "white", "red"]
-    cmap_mean = mcolors.LinearSegmentedColormap.from_list("", colors_mean)
-    cmap_std = mcolors.LinearSegmentedColormap.from_list("", colors_std)
-    p = int(explain_this.shape[-1]**0.5)
-    used_img = explain_this.reshape((p,p))
-    for i in range(n_classes):
-        errors = np.array([val[1] for val in cont_class[i].values()])
-        explained_025 = errors[:,0].reshape((p,p))
-        explained_975 = errors[:,1].reshape((p,p))
-
-        maxima_025 = np.nanmax(explained_025)
-        minima_025 = np.nanmin(explained_025)
-
-        maxima_975 = np.nanmax(explained_975)
-        minima_975 = np.nanmin(explained_975)
-        fig, axs = plt.subplots(1,2, figsize=(8,8))
-
-
-        maxima = np.max([maxima_025, maxima_975])
-        minima = np.min([minima_025, minima_975])
-                
-        axs[0].imshow(used_img, cmap="Greys", vmin=torch.min(used_img), vmax=torch.max(used_img)+0.5)
-        axs[1].imshow(used_img, cmap="Greys", vmin=torch.min(used_img), vmax=torch.max(used_img)+0.5)
-        norm_mean = TwoSlopeNorm(vmin=minima-0.001, vcenter=0, vmax=maxima+0.001)
-        im = axs[0].imshow(explained_025, cmap=cmap_mean, norm=norm_mean)
-        cbar = fig.colorbar(im, ax=axs[0], fraction=0.046, pad=0.04)
-        cbar.ax.set_yscale('linear')
-
-        norm_std = TwoSlopeNorm(vmin=minima-0.001, vcenter=0, vmax=maxima+0.001)
-        im = axs[1].imshow(explained_975, cmap=cmap_std, norm=norm_std)
-        cbar = fig.colorbar(im, ax=axs[1], fraction=0.046, pad=0.04)
-        cbar.ax.set_yscale('linear')
-        
-        axs[0].set_title("0.025 quantile")
-        axs[1].set_title("0.975 quantile")
-
-        axs[0].set_xticks([])
-        axs[0].set_yticks([])
-        axs[1].set_xticks([])
-        axs[1].set_yticks([])
-        fig.suptitle(f"Local explain class: {class_names[i]}")
-        plt.tight_layout(rect=[0, 0.03, 1, 1.3])
-        plt.show()
 
 def get_metrics(net, threshold=0.5):
     net = copy.deepcopy(net)
