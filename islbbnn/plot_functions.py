@@ -158,6 +158,70 @@ def plot_local_contribution_empirical(net, data, sample=True, median=True, n_sam
 
         plt.show()
 
+def plot_local_explain_piecewise_linear_act(
+        net, 
+        input_data,
+        median=True, 
+        sample=True, 
+        n_samples=1,
+        magnitude=True,
+        include_potential_contribution=True,
+        variable_names=None,
+        include_prediction=True,
+        include_bias=True,
+        fig_size=(10,6),
+        cred_int=[0.025,0.975],
+        save_path=None):
+    '''
+    NOTE: we assume that bias is the first element in input_data tensor.
+    '''
+    expl, preds, p = pip_func.local_explain_piecewise_linear_act(
+        net,
+        input_data,
+        median,
+        sample,
+        n_samples,
+        magnitude,
+        include_potential_contribution)
+
+    if variable_names == None:
+        variable_names = [f"x{i}" for i in range(p)]
+
+    for i, v in enumerate(variable_names):
+        variable_names[i] = v + f"={input_data[i].cpu().detach().numpy():.2f}"
+
+    if include_prediction:
+        expl = np.concatenate((expl, preds.cpu().detach().numpy()),1)
+        variable_names.append("Prediction")
+        p+=1
+
+    if not include_bias:
+        variable_names = variable_names[1:]
+        expl = expl[:,1:]
+        p-=1
+        
+
+    means = expl.mean(0)
+    cred = np.quantile(expl, cred_int, axis=0).T
+    for indx, err in enumerate(cred):
+        if err[0] == 0 and err[1] == 0:
+            err[0] = means[indx]
+            err[1] = means[indx]
+    top = cred[:,1]-means
+    bottom = means-cred[:,0]
+    # Plot the explanation tensor
+    plt.figure(figsize=fig_size)
+    plt.bar(range(p), means, yerr=(bottom, top), align='center', alpha=0.5, edgecolor='k', capsize=10)
+    plt.xlabel('Input Variable')
+    plt.ylabel('Gradient')
+    plt.title('Covariate contribution to model prediction')
+    plt.xticks(range(p), [f'{variable_names[i]}' for i in range(p)], rotation=90)  # Rotate x-axis labels if necessary
+    plt.grid()
+    plt.tight_layout()
+    if save_path!=None:
+        plt.savefig(save_path)
+    plt.show()
+
 def plot_path_individual_classes(net, CLASSES, path="individual_classes"):
     for c in range(CLASSES):
         include_list = [True]*CLASSES

@@ -705,6 +705,48 @@ def local_explain_relu_magnitude(net, input_data, threshold=0.5, median=True, sa
     return mean_contribution, cred_contribution, np.array(preds)
 
 
+def local_explain_piecewise_linear_act(
+        net, 
+        input_data, 
+        median=True, 
+        sample=True, 
+        n_samples=1,
+        magnitude=True,
+        include_potential_contribution=True):
+    '''
+    NOTE: Only implemented for binary and regression problems, multiclass implementation
+    is yet to be implemented.
+    '''
+
+    p = input_data.shape[0]
+    explanation = torch.zeros((n_samples,p))
+    preds = torch.zeros((n_samples,1))
+    for j in range(n_samples):
+        
+        explain_this = input_data.reshape(-1, p)
+        explain_this.requires_grad = True
+        net.zero_grad()
+        output = net.forward_preact(explain_this, sample=sample, ensemble=not median)
+        output_value = output[0,0]
+        output_value.backward()
+
+        gradients = explain_this.grad
+        explanation[j] = gradients[0]
+        preds[j,0] = output
+
+    expl = explanation.cpu().detach().numpy()
+    if include_potential_contribution:
+        # If covariate=0, we assume that the contribution is negative (good/bad that it is not included)
+        expl = np.where(explain_this != 0.0, expl, -expl)    
+    else:
+        # remove variables that does not contribute to the prediction at all
+        expl = np.where(explain_this != 0.0, expl, 0)
+
+    if not magnitude:
+        expl = expl*explain_this.cpu().detach().numpy()
+
+    return expl, preds, p
+
 
 def train(net, train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weights, multiclass=False, verbose=True, post_train=False):
     net.train()
