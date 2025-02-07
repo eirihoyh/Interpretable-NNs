@@ -10,4 +10,5 @@ torchmetrics
 torchvision
 lime
 shap
+seaborn
 graphviz # Requires manual install as well: https://www.graphviz.org/download/
