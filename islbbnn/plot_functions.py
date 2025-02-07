@@ -171,6 +171,7 @@ def plot_local_explain_piecewise_linear_act(
         include_bias=True,
         fig_size=(10,6),
         cred_int=[0.025,0.975],
+        no_zero_contributions=False,
         save_path=None):
     '''
     NOTE: we assume that bias is the first element in input_data tensor.
@@ -189,16 +190,27 @@ def plot_local_explain_piecewise_linear_act(
 
     for i, v in enumerate(variable_names):
         variable_names[i] = v + f"={input_data[i].cpu().detach().numpy():.2f}"
+    
+    variable_names = np.array(variable_names)
 
-    if include_prediction:
-        expl = np.concatenate((expl, preds.cpu().detach().numpy()),1)
-        variable_names.append("Prediction")
-        p+=1
 
     if not include_bias:
         variable_names = variable_names[1:]
         expl = expl[:,1:]
         p-=1
+
+    if no_zero_contributions:
+        mask=np.ones(expl.shape[1], dtype=bool)
+        all_zeros = np.unique(np.where(expl==0)[1])
+        mask[all_zeros] = 0
+        expl = expl[:,mask]
+        variable_names = variable_names[mask] 
+        p-=len(all_zeros)
+
+    if include_prediction:
+        expl = np.concatenate((expl, preds.cpu().detach().numpy()),1)
+        variable_names=np.append(variable_names, ["Prediction"])
+        p+=1
         
 
     means = expl.mean(0)
