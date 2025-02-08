@@ -5,17 +5,6 @@ import copy
 import torch
 from torchmetrics import R2Score, MeanSquaredError
 
-# import os
-# import sys
-# current_dir = os.getcwd()
-# sys.path.append('layers')
-# sys.path.append('experiments_linear_functions/layers')
-# from config import config
-# dim = config['hidden_dim']
-# n_layers = config['n_layers'] 
-# n_hidden_layers = n_layers - 2
-# n_samples = config['n_samples']
-
 
 
 def create_data_unif(n,beta=[10,1,1,1,1], dep_level=0.5,classification=False, non_lin=False):
