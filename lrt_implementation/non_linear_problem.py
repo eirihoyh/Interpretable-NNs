@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 from torch.optim.lr_scheduler import MultiStepLR
 from sklearn.model_selection import train_test_split
-from config_linear import config
+from config_non_linear import config
 import os
 import sys
 from lime.lime_tabular import LimeTabularExplainer
@@ -43,7 +43,7 @@ SAMPLES = 1
 
 
 # Define BATCH sizes
-BATCH_SIZE = int((n_samples*0.8)/10)
+BATCH_SIZE = int((n_samples*0.8)/5)
 TEST_BATCH_SIZE = int(n_samples*0.10) # Would normally call this the "validation" part (will be used during training)
 VAL_BATCH_SIZE = int(n_samples*0.10) # and this the "test" part (will be used after training)
 
@@ -92,19 +92,19 @@ for ni in range(n_nets):
     nr_weights = np.sum([np.prod(a.shape) for a in alphas])
     print(nr_weights)
 
-    # params = []
-    # for name, param in net.named_parameters():
-    #     if f"lambdal" in name:
-    #         alpha_lr = {'params': param, 'lr': 0.75}
-    #         params.append(alpha_lr)
-    #     else:
-    #         param_lr = {'params': param, 'lr': lr}
-    #         params.append(param_lr)
+    params = []
+    for name, param in net.named_parameters():
+        if f"lambdal" in name:
+            alpha_lr = {'params': param, 'lr': 0.1}
+            params.append(alpha_lr)
+        else:
+            param_lr = {'params': param, 'lr': lr}
+            params.append(param_lr)
 
-    # # print(params)
-    # optimizer = optim.Adam(params, lr=lr)
-    optimizer = optim.Adam(net.parameters(), lr=lr)
+    # print(params)
     
+    optimizer = optim.Adam(params, lr=lr)
+    optimizer = optim.Adam(net.parameters(), lr=lr)
     
     scheduler = MultiStepLR(optimizer, milestones=[int(0.3*tot_rounds), int(0.5*tot_rounds), int(0.7*tot_rounds), int(0.9*tot_rounds)], gamma=0.5)
 
@@ -153,14 +153,14 @@ for ni in range(n_nets):
         scheduler.step()
     
     if save_res:
-        torch.save(net, f"examples/network/net{ni}_linear")
+        torch.save(net, f"lrt_implementation/network/net{ni}_non_linear")
     all_nets[ni] = net 
     # Results
     metrics, metrics_median = pip_func.test_ensemble(all_nets[ni], test_dat, DEVICE, SAMPLES=100, CLASSES=1, reg=(not class_problem)) # Test same data 100 times to get average 
     metrics_several_runs.append(metrics)
     metrics_median_several_runs.append(metrics_median)
-    pf.run_path_graph(all_nets[ni], threshold=0.5, save_path=f"examples/path_graphs/prob/net{ni}_linear_relu", show=False)
-    pf.run_path_graph_weight(net, save_path=f"examples/path_graphs/weight/net{ni}_linear_relu", show=False)
+    pf.run_path_graph(all_nets[ni], threshold=0.5, save_path=f"lrt_implementation/path_graphs/prob/net{ni}_non_linear_relu", show=False)
+    pf.run_path_graph_weight(net, save_path=f"lrt_implementation/path_graphs/weight/net{ni}_non_linear_relu", show=False)
 
 if verbose:
     print(metrics)
@@ -174,9 +174,9 @@ print(m_median)
 
 if save_res:
     # m = np.array(metrics_several_runs)
-    np.savetxt(f'examples/results/lrt_class_skip_{HIDDEN_LAYERS}_hidden_{dim}_dim_{epochs}_epochs_{lr}_lr_lin_func_relu_full.txt',m,delimiter = ',')
+    np.savetxt(f'lrt_implementation/results/lrt_class_skip_{HIDDEN_LAYERS}_hidden_{dim}_dim_{epochs}_epochs_{lr}_lr_non_lin_func_relu_full.txt',m,delimiter = ',')
     # m_median = np.array(metrics_median_several_runs)
-    np.savetxt(f'examples/results/lrt_class_skip_{HIDDEN_LAYERS}_hidden_{dim}_dim_{epochs}_epochs_{lr}_lr_lin_func_relu_median.txt',m_median,delimiter = ',')
+    np.savetxt(f'lrt_implementation/results/lrt_class_skip_{HIDDEN_LAYERS}_hidden_{dim}_dim_{epochs}_epochs_{lr}_lr_non_lin_func_relu_median.txt',m_median,delimiter = ',')
 
 
 
