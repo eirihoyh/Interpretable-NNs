@@ -737,7 +737,20 @@ def local_explain_piecewise_linear_act(
     return expl, preds, p
 
 
-def train(net, train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_weights, multiclass=False, verbose=True, post_train=False):
+def train(
+        net, 
+        train_data, 
+        optimizer, 
+        batch_size, 
+        num_batches, 
+        p, 
+        DEVICE, 
+        nr_weights, 
+        multiclass=False, 
+        verbose=True, 
+        post_train=False,
+        ann=False,
+        reg_level=0.0):
     net.train()
 
     inds = np.arange(0,len(train_data),1)
@@ -759,9 +772,17 @@ def train(net, train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_wei
             target = target.unsqueeze(1).float()
                 
         net.zero_grad()
-        outputs = net(data, sample=True, post_train=post_train)
-        negative_log_likelihood = net.loss(outputs, target) 
-        loss = negative_log_likelihood + net.kl() / num_batches
+        if ann:
+            outputs = net(data)
+            kl_part = 0.
+            for param in net.parameters():
+                kl_part += param.abs().sum()
+            kl_part *= reg_level
+        else:
+            outputs = net(data, sample=True, post_train=post_train)
+            kl_part = net.kl() / num_batches
+        negative_log_likelihood = net.loss(outputs, target)
+        loss = negative_log_likelihood + kl_part
         loss.backward()
         optimizer.step()
 
@@ -771,7 +792,10 @@ def train(net, train_data, optimizer, batch_size, num_batches, p, DEVICE, nr_wei
     if verbose:
         print('loss', loss.item())
         print('nll', negative_log_likelihood.item())
-        print('density', expected_number_of_weights(net)/nr_weights) # This is over ALL weights, not just active paths
+        if ann:
+            print('density', net.nr_of_used_weights()/nr_weights)
+        else:
+            print('density', expected_number_of_weights(net)/nr_weights) # This is over ALL weights, not just active paths
         print('')
     return negative_log_likelihood.item(), loss.item()
 
@@ -831,8 +855,8 @@ def test_ensemble(net, test_data, DEVICE, SAMPLES, CLASSES=1, reg=True, verbose=
         outputs = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
         outputs_median = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
         for i in range(SAMPLES):
-            outputs[i] = net.forward(data, sample=True, ensemble=True, calculate_log_probs=True, post_train=post_train)
-            outputs_median[i] = net.forward(data, sample=True, ensemble=False, calculate_log_probs=True, post_train=post_train)
+            outputs[i] = net.forward(data)
+            outputs_median[i] = net.forward()
 
         # Take the mean of the predictions 
         outputs_mean = outputs.mean(0)  
@@ -896,3 +920,179 @@ def test_ensemble(net, test_data, DEVICE, SAMPLES, CLASSES=1, reg=True, verbose=
     return metr, metr_median
 
 
+# ----------------- ANN specific functions ---------------------------------
+
+def weight_matrices_ann(net):
+    '''
+    Get all mean values in all the probability distributions.
+    Will be stored as a list, where each element in the list
+    are matrices where the columns represents the nodes in the preceding
+    layer, and the rows represents the hidden nodes in the succeeding layer.
+    In the Input skip-connection LBBNN model, we will have the following 
+    dimension from one hidden layer to another hidden layer:
+        (number of hidden nodes)x(number of hidden nodes + number of input variables)
+    It should be noted that the last columns are always the input variables.
+    '''
+    n_hidden_layers = nr_hidden_layers(net)
+    weight_matrices = []
+    for name, param in net.named_parameters():
+        for i in range(n_hidden_layers+1):
+            if f'linears.{i}.weight' in name:
+                weight_matrices.append(copy.deepcopy(param.data))
+    return weight_matrices
+
+def weight_matrices_ann_numpy(net):
+    '''
+    Transform all tensor mu matrices to numpy arrays
+    '''
+    w = weight_matrices_ann(net)
+    for i in range(len(w)):
+        w[i] = w[i].cpu().detach().numpy()
+
+    return w
+
+
+def get_alphas_ann(net, threshold=0.005):
+    alphas = {}
+    w = weight_matrices_ann(net)
+    for i in range(len(w)):
+        alphas[i] = (torch.abs(w[i]) > threshold)*1
+    return list(alphas.values())
+
+
+
+def val_ann(
+        net, 
+        val_data, 
+        DEVICE, 
+        multiclass=False, 
+        reg=False, 
+        verbose=True):
+    '''
+    NOTE: Will only validate using median model. 
+    '''
+    net.eval()
+    with torch.no_grad():
+        _x = val_data[:, :-1]
+        _y = val_data[:, -1]
+        data = _x.to(DEVICE)
+        if multiclass:
+            target = _y.type(torch.LongTensor).to(DEVICE)
+        else:
+            target = _y.to(DEVICE)
+            target = target.unsqueeze(1).float()
+        outputs = net.mpm(data)
+        # negative_log_likelihood = net.loss(outputs, target)
+
+        if reg:
+            metric = R2Score()
+            a = metric(outputs.T[0], target.T[0]).cpu().detach().numpy()
+        else:
+            if multiclass:
+                output1 = outputs#.T.mean(0)
+                class_pred = output1.max(1, keepdim=True)[1]
+                a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
+            else:
+                
+                class_pred = outputs.round().squeeze()
+                a = class_pred.cpu().detach().numpy() == target.T[0].cpu().detach().numpy()
+                a = np.mean(a)
+    
+    used_weigths_median = net.nr_of_used_weights()
+    if verbose:
+        print(f'val_ensemble: {a:.4f}, used_weights_median: {used_weigths_median}\n')
+
+    return a, used_weigths_median
+
+def test_ensemble_ann(
+        net, 
+        test_data, 
+        DEVICE, 
+        SAMPLES, 
+        CLASSES=1, 
+        reg=True, 
+        verbose=True, 
+        multiclass=False,
+        threshold=0.005):
+    net.eval()
+    metr = []
+    metr_median = []
+    density = []
+    used_weights = []
+    ensemble = []
+    ensemble_median = []
+    if reg:
+        ensemble_r2 = []
+        ensemble_r2_median = []
+    with torch.no_grad():
+        _x = test_data[:, :-1]
+        _y = test_data[:, -1]
+        data = _x.to(DEVICE)
+        target = _y.to(DEVICE)
+        outputs = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
+        outputs_median = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
+        for i in range(SAMPLES):
+            outputs[i] = net.forward(data)
+            outputs_median[i] = net.mpm(data)
+
+        # Take the mean of the predictions 
+        outputs_mean = outputs.mean(0)  
+        outputs_median_mean = outputs_median.mean(0)
+        # Get current density (median prob model) 
+        alphas = get_alphas_ann(net, threshold)
+        alpha_clean = clean_alpha(net, threshold=0.5, alpha_list=alphas)
+        density_median, used_weigths_median, _ = network_density_reduction(alpha_clean)
+        density.append(density_median)
+        used_weights.append(used_weigths_median)
+
+        if reg:
+            metric = R2Score()
+            mse = MeanSquaredError().to(DEVICE)
+            a_r2 = metric(outputs_mean.T[0], target).cpu().detach().numpy()
+            a_median_r2 = metric(outputs_median_mean.T[0], target).cpu().detach().numpy()
+
+            a_rmse = np.sqrt(mse(outputs_mean.T[0], target).cpu().detach().numpy())
+            a_median_rmse = np.sqrt(mse(outputs_median_mean.T[0], target).cpu().detach().numpy())
+        else:
+            if multiclass:
+                output1 = outputs_mean#.T.mean(0)
+                class_pred = output1.max(1, keepdim=True)[1]
+                a = class_pred.eq(target.view_as(class_pred)).sum().item() / len(target)
+
+                output1_median = outputs_median_mean#.T.mean(0)
+                class_pred_median = output1_median.max(1, keepdim=True)[1]
+                a_median = class_pred_median.eq(target.view_as(class_pred_median)).sum().item() / len(target)
+            else:
+                output1 = outputs_mean.T.mean(0)
+                class_pred = output1.round().squeeze()
+                a = np.mean((class_pred.cpu().detach().numpy() == target.cpu().detach().numpy()) * 1)
+
+                output1_median = outputs_median_mean.T.mean(0)
+                class_pred_median = output1_median.round().squeeze()
+                a_median = np.mean((class_pred_median.cpu().detach().numpy() == target.cpu().detach().numpy()) * 1)
+                
+        if reg:
+            ensemble.append(a_rmse)
+            ensemble_median.append(a_median_rmse)
+            ensemble_r2.append(a_r2)
+            ensemble_r2_median.append(a_median_r2)
+        else:
+            ensemble.append(a)
+            ensemble_median.append(a_median)
+
+        metr.append(np.mean(ensemble))
+        metr.append(density[0].cpu().detach().numpy())
+        metr_median.append(np.mean(ensemble_median))
+        metr_median.append(used_weights[0].cpu().detach().numpy())
+        if reg:
+            metr.append(np.mean(ensemble_r2))
+            metr_median.append(np.mean(ensemble_r2_median))
+
+    if verbose:
+        print(density[0].cpu().detach().numpy(), 'density median')
+        print(used_weights[0].cpu().detach().numpy(), 'used weights median')
+        print(np.mean(ensemble), 'ensemble full')
+        print(np.mean(ensemble_median), 'ensemble median')
+        
+
+    return metr, metr_median

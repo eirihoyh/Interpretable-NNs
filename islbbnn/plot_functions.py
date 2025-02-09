@@ -96,6 +96,14 @@ def run_path_graph_weight(net, threshold=0.5, save_path="path_graphs/all_paths_i
     all_connections = pip_func.get_active_weights(clean_alpha_list)
     plot_whole_path_graph_weight(weight_list, all_connections, save_path=save_path, show=show)
 
+def run_path_graph_weight_ann(net, threshold=0.005, save_path="path_graphs/all_paths_input_skip", show=True):
+    # net = copy.deepcopy(net)
+    weight_list = pip_func.weight_matrices_ann_numpy(net)
+    alphas = pip_func.get_alphas_ann(net, threshold)
+    clean_alpha_list = pip_func.clean_alpha(net, 0.5, alpha_list=alphas)
+    all_connections = pip_func.get_active_weights(clean_alpha_list)
+    plot_whole_path_graph_weight(weight_list, all_connections, save_path=save_path, show=show)
+
 
 def plot_local_contribution_empirical(net, data, sample=True, median=True, n_samples=1, include_bias=True, save_path=None, n_classes=1, class_names=None, variable_names=None, quantiles=[0.025,0.975], include_zero_means=True, magnitude=False, include_potential_contribution=False):
     '''

@@ -7,8 +7,6 @@ from sklearn.model_selection import train_test_split
 from config_linear import config
 import os
 import sys
-from lime.lime_tabular import LimeTabularExplainer
-import shap
 current_dir = os.getcwd()
 
 sys.path.append('islbbnn')
