@@ -132,7 +132,7 @@ for ni in range(n_nets):
         scheduler.step()
     
     if save_res:
-        torch.save(net, f"ann_implementation/network/net{ni}_non_linear")
+        torch.save(net, f"ann_implementation/network/net{ni}_linear")
     all_nets[ni] = net 
     # Results
     metrics, metrics_median = pip_func.test_ensemble_ann(all_nets[ni], test_dat, DEVICE, SAMPLES=100, CLASSES=1, reg=(not class_problem)) # Test same data 100 times to get average 
