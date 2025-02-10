@@ -180,6 +180,8 @@ def plot_local_explain_piecewise_linear_act(
         fig_size=(10,6),
         cred_int=[0.025,0.975],
         no_zero_contributions=False,
+        ann=False,
+        thresh=0.005,
         save_path=None):
     '''
     NOTE: we assume that bias is the first element in input_data tensor.
@@ -192,7 +194,6 @@ def plot_local_explain_piecewise_linear_act(
         n_samples,
         magnitude,
         include_potential_contribution)
-
     if variable_names == None:
         variable_names = [f"x{i}" for i in range(p)]
 
@@ -209,7 +210,10 @@ def plot_local_explain_piecewise_linear_act(
 
     if no_zero_contributions:
         mask=np.ones(expl.shape[1], dtype=bool)
-        all_zeros = np.unique(np.where(expl==0)[1])
+        if ann:
+            all_zeros = np.unique(np.where(np.isclose(expl, 0, thresh, thresh))[1])
+        else:
+            all_zeros = np.unique(np.where(expl==0)[1])
         mask[all_zeros] = 0
         expl = expl[:,mask]
         variable_names = variable_names[mask] 
