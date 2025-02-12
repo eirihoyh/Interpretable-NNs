@@ -35,7 +35,9 @@ save_res = config['save_res']
 patience = config['patience']
 alpha_prior = config['inclusion_prob_prior']
 std_prior = config['std_prior']
-SAMPLES = 1
+lower_init_lambda = config['lower_init_lambda']
+upper_init_lambda = config['upper_init_lambda']
+high_init_covariate_prob = config['high_init_covariate_prob']
 
 
 
@@ -63,6 +65,14 @@ y, X = pip_func.create_data_unif(n_samples, beta=[100,1,1,1,1], dep_level=0.0, c
 n, p = X.shape  # need this to get p 
 print(n,p,dim)
 
+if class_problem:
+    n_classes = len(np.unique(y))
+    if n_classes == 2: # If binary class
+            n_classes = 1
+else: 
+    n_classes = 1  # Just need to set it to something above zero
+multiclass = n_classes > 1
+
 # Split keep some of the data for validation after training
 X, X_test, y, y_test = train_test_split(
     X, y, test_size=0.10, random_state=42, stratify=y)
@@ -85,7 +95,18 @@ for ni in range(n_nets):
     print('network', ni)
     # Initate network
     torch.manual_seed(ni+42)
-    net = BayesianNetwork(dim, p, HIDDEN_LAYERS, classification=class_problem, a_prior=alpha_prior, std_prior=std_prior, n_classes=1, act_func=F.relu).to(DEVICE)
+    net = BayesianNetwork(
+        dim, 
+        p, 
+        HIDDEN_LAYERS, 
+        classification=class_problem, 
+        a_prior=alpha_prior, 
+        std_prior=std_prior, 
+        n_classes=n_classes, 
+        act_func=F.relu,  # NOTE: piecewise linear function is used
+        lower_init_lambda=lower_init_lambda,
+        upper_init_lambda=upper_init_lambda,
+        high_init_covariate_prob=high_init_covariate_prob).to(DEVICE)
     alphas = pip_func.get_alphas_numpy(net)
     nr_weights = np.sum([np.prod(a.shape) for a in alphas])
     print(nr_weights)
