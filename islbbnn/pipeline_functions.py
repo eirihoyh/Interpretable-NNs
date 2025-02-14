@@ -856,7 +856,7 @@ def test_ensemble(net, test_data, DEVICE, SAMPLES, CLASSES=1, reg=True, verbose=
         outputs_median = torch.zeros(SAMPLES, _x.shape[0], CLASSES).to(DEVICE)
         for i in range(SAMPLES):
             outputs[i] = net.forward(data)
-            outputs_median[i] = net.forward()
+            outputs_median[i] = net.forward(data)
 
         # Take the mean of the predictions 
         outputs_mean = outputs.mean(0)  
