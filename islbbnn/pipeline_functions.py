@@ -698,38 +698,38 @@ def local_explain_piecewise_linear_act(
         net, 
         input_data, 
         median=True, 
-        sample=True, 
+        sample=False, 
         n_samples=1,
         magnitude=True,
-        include_potential_contribution=True):
-    '''
-    NOTE: Only implemented for binary and regression problems, multiclass implementation
-    is yet to be implemented.
-    '''
+        include_potential_contribution=False,
+        n_classes=1):
 
     p = input_data.shape[0]
-    explanation = torch.zeros((n_samples,p))
-    preds = torch.zeros((n_samples,1))
+    explanation = torch.zeros((n_samples,p,n_classes))
+    preds = torch.zeros((n_samples,n_classes))
     for j in range(n_samples):
         
         explain_this = input_data.reshape(-1, p)
         explain_this.requires_grad = True
         net.zero_grad()
         output = net.forward_preact(explain_this, sample=sample, ensemble=not median)
-        output_value = output[0,0]
-        output_value.backward()
+        for c in range(n_classes):
+            output_value = output[0,c]
+            output_value.backward(retain_graph=True)
 
-        gradients = explain_this.grad
-        explanation[j] = gradients[0]
-        preds[j,0] = output
+            gradients = explain_this.grad
+            explanation[j,:,c] = gradients[0]
+            preds[j,c] = output[0,c]
 
     expl = explanation.cpu().detach().numpy()
     if include_potential_contribution:
         # If covariate=0, we assume that the contribution is negative (good/bad that it is not included)
-        expl = np.where(explain_this != 0.0, expl, -expl)    
+        inds = np.where(explain_this == 0.0)
+        expl[inds] = -expl[inds]
     else:
         # remove variables that does not contribute to the prediction at all
-        expl = np.where(explain_this != 0.0, expl, 0)
+        inds = np.where(explain_this == 0.0)
+        expl[inds] = 0
 
     if not magnitude:
         expl = expl*explain_this.cpu().detach().numpy()
