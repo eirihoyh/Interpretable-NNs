@@ -172,14 +172,15 @@ def plot_local_explain_piecewise_linear_act(
         median=True, 
         sample=True, 
         n_samples=1,
+        n_classes=1,
         magnitude=True,
         include_potential_contribution=True,
         variable_names=None,
         include_prediction=True,
         include_bias=True,
+        no_zero_contributions=False,
         fig_size=(10,6),
         cred_int=[0.025,0.975],
-        no_zero_contributions=False,
         ann=False,
         thresh=0.005,
         save_path=None):
@@ -193,7 +194,8 @@ def plot_local_explain_piecewise_linear_act(
         sample,
         n_samples,
         magnitude,
-        include_potential_contribution)
+        include_potential_contribution,
+        n_classes)
     if variable_names == None:
         variable_names = [f"x{i}" for i in range(p)]
 
@@ -207,44 +209,53 @@ def plot_local_explain_piecewise_linear_act(
         variable_names = variable_names[1:]
         expl = expl[:,1:]
         p-=1
-
-    if no_zero_contributions:
-        mask=np.ones(expl.shape[1], dtype=bool)
-        if ann:
-            all_zeros = np.unique(np.where(np.isclose(expl, 0, thresh, thresh))[1])
-        else:
-            all_zeros = np.unique(np.where(expl==0)[1])
-        mask[all_zeros] = 0
-        expl = expl[:,mask]
-        variable_names = variable_names[mask] 
-        p-=len(all_zeros)
-
-    if include_prediction:
-        expl = np.concatenate((expl, preds.cpu().detach().numpy()),1)
-        variable_names=np.append(variable_names, ["Prediction"])
-        p+=1
         
+    for c in range(n_classes):
+        # Will plot one class at-a-time
+        expl_class = copy.deepcopy(expl[:,:,c])
+        p_class = copy.deepcopy(p)
 
-    means = expl.mean(0)
-    cred = np.quantile(expl, cred_int, axis=0).T
-    for indx, err in enumerate(cred):
-        if err[0] == 0 and err[1] == 0:
-            err[0] = means[indx]
-            err[1] = means[indx]
-    top = cred[:,1]-means
-    bottom = means-cred[:,0]
-    # Plot the explanation tensor
-    plt.figure(figsize=fig_size)
-    plt.bar(range(p), means, yerr=(bottom, top), align='center', alpha=0.5, edgecolor='k', capsize=10)
-    plt.xlabel('Input Variable')
-    plt.ylabel('Gradient')
-    plt.title('Covariate contribution to model prediction')
-    plt.xticks(range(p), [f'{variable_names[i]}' for i in range(p)], rotation=90)  # Rotate x-axis labels if necessary
-    plt.grid()
-    plt.tight_layout()
-    if save_path!=None:
-        plt.savefig(save_path)
-    plt.show()
+        if include_prediction:
+            expl_class = np.concatenate((expl_class, preds[:,c:c+1].cpu().detach().numpy()),1)
+            variable_names=np.append(variable_names, ["Prediction"])
+            p_class+=1
+
+        if no_zero_contributions:
+            mask=np.ones(expl_class.shape[1], dtype=bool)
+            if ann:
+                all_zeros = np.unique(np.where(np.isclose(expl_class, 0, thresh, thresh))[1])
+            else:
+                all_zeros = np.unique(np.where(expl_class==0)[1])
+            mask[all_zeros] = 0
+            expl_class = expl_class[:,mask]
+            variable_names = variable_names[mask] 
+            p_class-=len(all_zeros)
+
+        means = expl_class.mean(0)
+        cred = np.quantile(expl_class, cred_int, axis=0).T
+        for indx, err in enumerate(cred):
+            if err[0] == 0 and err[1] == 0:
+                err[0] = means[indx]
+                err[1] = means[indx]
+        top = cred[:,1]-means
+        bottom = means-cred[:,0]
+        # Plot the explanation tensor
+        plt.figure(figsize=fig_size)
+        plt.bar(range(p_class), means, yerr=(bottom, top), align='center', alpha=0.5, edgecolor='k', capsize=10)
+        plt.xlabel('Input Variable')
+        plt.ylabel('Gradient')
+        plt.title('Covariate contribution to model prediction')
+        plt.xticks(range(p_class), [f'{variable_names[i]}' for i in range(p_class)], rotation=90)  # Rotate x-axis labels if necessary
+        plt.grid()
+        plt.tight_layout()
+        if save_path!=None:
+            # save figures as png
+            if n_classes > 1:
+                save_path += f"{c}.png"
+            else:
+                save_path += ".png"
+            plt.savefig(save_path)
+        plt.show()
 
 def plot_path_individual_classes(net, CLASSES, path="individual_classes"):
     for c in range(CLASSES):
