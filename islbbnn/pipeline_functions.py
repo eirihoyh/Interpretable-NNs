@@ -698,7 +698,7 @@ def local_explain_piecewise_linear_act(
         net, 
         input_data, 
         median=True, 
-        sample=False, 
+        sample=True, 
         n_samples=1,
         magnitude=True,
         include_potential_contribution=False,
