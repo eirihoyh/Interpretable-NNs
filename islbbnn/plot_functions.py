@@ -191,12 +191,12 @@ def plot_local_explain_piecewise_linear_act(
     expl, preds, p = pip_func.local_explain_piecewise_linear_act(
         net,
         input_data,
-        median,
-        sample,
-        n_samples,
-        magnitude,
-        include_potential_contribution,
-        n_classes)
+        median=median,
+        sample=sample,
+        n_samples=n_samples,
+        magnitude=magnitude,
+        include_potential_contribution=include_potential_contribution,
+        n_classes=n_classes)
     
     if class_names == None:
         class_names = ["" for _ in range(n_classes)]

@@ -722,17 +722,16 @@ def local_explain_piecewise_linear_act(
             preds[j,c] = output[0,c]
 
     expl = explanation.cpu().detach().numpy()
+    inds = np.where(explain_this == 0.0)[1]
     if include_potential_contribution:
         # If covariate=0, we assume that the contribution is negative (good/bad that it is not included)
-        inds = np.where(explain_this == 0.0)
-        expl[inds] = -expl[inds]
+        expl[:,inds] = -expl[:,inds]
     else:
         # remove variables that does not contribute to the prediction at all
-        inds = np.where(explain_this == 0.0)
-        expl[inds] = 0
+        expl[:,inds] = 0
 
     if not magnitude:
-        expl = expl*explain_this.cpu().detach().numpy()
+        expl = input_data.cpu().detach().numpy()[:,None]*expl
 
     return expl, preds, p
 
