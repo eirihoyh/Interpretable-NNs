@@ -223,21 +223,23 @@ def plot_local_explain_piecewise_linear_act(
         p_class = copy.deepcopy(p)
         variable_names_class = copy.deepcopy(variable_names)
 
-        if include_prediction:
-            expl_class = np.concatenate((expl_class, preds[:,c:c+1].cpu().detach().numpy()),1)
-            variable_names_class=np.append(variable_names_class, ["Prediction"])
-            p_class+=1
-
         if no_zero_contributions:
             mask=np.ones(expl_class.shape[1], dtype=bool)
             if ann:
                 all_zeros = np.where(np.isclose(expl_class, 0, thresh, thresh))[1]
+                remove_p = len(all_zeros)
             else:
                 all_zeros = (expl_class==0).all(0)
+                remove_p = sum(all_zeros)
             mask[all_zeros] = False
             expl_class = expl_class[:,mask]
             variable_names_class = variable_names_class[mask] 
-            p_class-=sum(all_zeros)
+            p_class-=remove_p
+
+        if include_prediction:
+            expl_class = np.concatenate((expl_class, preds[:,c:c+1].cpu().detach().numpy()),1)
+            variable_names_class=np.append(variable_names_class, ["Prediction"])
+            p_class+=1
 
         means = expl_class.mean(0)
         cred = np.quantile(expl_class, cred_int, axis=0).T
