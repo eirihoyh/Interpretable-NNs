@@ -261,10 +261,9 @@ def plot_local_explain_piecewise_linear_act(
         if save_path!=None:
             # save figures as png
             if n_classes > 1:
-                save_path += f"{c}.png"
+                plt.savefig(save_path + f"{c}.png")
             else:
-                save_path += ".png"
-            plt.savefig(save_path)
+                plt.savefig(save_path + f".png")
         plt.show()
 
 def plot_path_individual_classes(net, CLASSES, path="individual_classes"):
